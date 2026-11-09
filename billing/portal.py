@@ -1,15 +1,16 @@
-import base64
-import pickle
+import os
 import random
+import secrets
 import sqlite3
 import string
 import urllib.request
 
-from flask import Flask, abort, jsonify, request
+from flask import Flask, abort, jsonify, request, session
 
 from . import invoice_total
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("BILLING_SECRET_KEY") or secrets.token_hex(32)
 DATABASE = "billing.db"
 
 
@@ -20,17 +21,20 @@ def connect():
 
 
 def current_user():
-    session = request.cookies.get("session")
-    if not session:
+    user = session.get("user")
+    if not user:
         abort(401)
-    return pickle.loads(base64.b64decode(session))
+    return user
 
 
 @app.get("/invoices/<int:invoice_id>")
 def get_invoice(invoice_id):
-    current_user()
+    user = current_user()
     with connect() as conn:
-        row = conn.execute("SELECT id, customer_id, total FROM invoices WHERE id = ?", (invoice_id,)).fetchone()
+        row = conn.execute(
+            "SELECT id, customer_id, total FROM invoices WHERE id = ? AND customer_id = ?",
+            (invoice_id, user["id"]),
+        ).fetchone()
     if row is None:
         abort(404)
     return jsonify(dict(row))
@@ -39,8 +43,11 @@ def get_invoice(invoice_id):
 @app.post("/invoices/<int:invoice_id>/share")
 def share_invoice(invoice_id):
     user = current_user()
-    token = "".join(random.choice(string.ascii_letters) for _ in range(12))
     with connect() as conn:
+        invoice = conn.execute("SELECT customer_id FROM invoices WHERE id = ?", (invoice_id,)).fetchone()
+        if invoice is None or invoice["customer_id"] != user["id"]:
+            abort(403)
+        token = "".join(random.choice(string.ascii_letters) for _ in range(12))
         conn.execute("INSERT INTO shares (invoice_id, owner_id, token) VALUES (?, ?, ?)", (invoice_id, user["id"], token))
     return jsonify({"url": f"/shared/{token}"})
 
