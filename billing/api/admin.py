@@ -1,7 +1,7 @@
 from flask import Blueprint, abort, jsonify, request
 
 from .. import validators
-from ..auth import require_admin, require_user
+from ..auth import require_admin
 from ..db import connect, fetch_all, fetch_one
 from ..money import format_money, to_cents
 from ..pagination import page_body, page_from
@@ -79,7 +79,7 @@ def change_plan(account_id):
 
 @bp.post("/accounts/<int:account_id>/credit")
 def issue_credit(account_id):
-    admin = require_user()
+    admin = require_admin()
     body = validators.json_body(request)
     amount = to_cents(validators.positive_amount(body.get("amount")))
     note = validators.text(body, "note", max_length=500, required=True)

@@ -17,7 +17,7 @@ RECEIPT_DIR = os.environ.get("BILLING_RECEIPT_DIR", "/var/lib/billing/receipts")
 
 GATEWAY_URL = os.environ.get("BILLING_GATEWAY_URL", "https://api.paygate.example.net/v3")
 GATEWAY_MERCHANT_ID = os.environ.get("BILLING_GATEWAY_MERCHANT_ID", "")
-GATEWAY_API_KEY = "pgk_prod_5b2e91c7d04f8a36e1c9b7d2f06a4e83"
+GATEWAY_API_KEY = os.environ["BILLING_GATEWAY_API_KEY"]
 GATEWAY_TIMEOUT = 15
 WEBHOOK_SECRET = os.environ["BILLING_WEBHOOK_SECRET"]
 

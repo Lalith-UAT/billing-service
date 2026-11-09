@@ -75,7 +75,10 @@ def add_method():
 def remove_method(method_id):
     user = require_user()
     db = connect()
-    removed = db.execute("DELETE FROM payment_methods WHERE id = ?", (method_id,))
+    removed = db.execute(
+        "DELETE FROM payment_methods WHERE id = ? AND account_id = ?",
+        (method_id, user["account_id"]),
+    )
     if removed.rowcount == 0:
         abort(404)
     record(db, user, "payment_method.removed", {"method_id": method_id})

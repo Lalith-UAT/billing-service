@@ -10,7 +10,7 @@ from .audit import record
 
 bp = Blueprint("users", __name__, url_prefix="/users")
 
-PROFILE_FIELDS = ("name", "email", "timezone", "role")
+PROFILE_FIELDS = ("name", "email", "timezone")
 
 
 def hash_password(password):

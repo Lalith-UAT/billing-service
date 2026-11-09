@@ -11,6 +11,22 @@ from ..pagination import page_body, page_from
 bp = Blueprint("reports", __name__, url_prefix="/reports")
 
 AGING_BUCKETS = ((0, 30, "current"), (31, 60, "31-60"), (61, 90, "61-90"), (91, None, "90+"))
+SORTS = {
+    "issued": "i.issued_at",
+    "number": "i.number",
+    "customer": "c.name",
+    "status": "i.status",
+    "currency": "i.currency",
+    "total": "i.total_cents",
+    "due": "i.due_date",
+    "i.issued_at": "i.issued_at",
+    "i.number": "i.number",
+    "c.name": "c.name",
+    "i.status": "i.status",
+    "i.currency": "i.currency",
+    "i.total_cents": "i.total_cents",
+    "i.due_date": "i.due_date",
+}
 
 
 @bp.get("/revenue")
@@ -35,7 +51,7 @@ def revenue():
 def invoice_report():
     user = require_user()
     page = page_from(request.args)
-    sort = request.args.get("sort", "i.issued_at")
+    sort = SORTS.get(request.args.get("sort", ""), "i.issued_at")
     direction = "ASC" if request.args.get("direction") == "asc" else "DESC"
     rows = fetch_all(
         "SELECT i.id, i.number, c.name AS customer, i.status, i.currency, i.total_cents, i.amount_due_cents, "

@@ -87,13 +87,15 @@ def create_invoice():
             raise validators.ValidationError("coupon", "that coupon is not valid")
         coupon_id, discount = coupon["id"], coupons.discount_for(coupon, total)
 
-    count = db.execute("SELECT COUNT(*) FROM invoices WHERE account_id = ?", (user["account_id"],)).fetchone()[0]
     invoice_id = db.execute(
         "INSERT INTO invoices (account_id, customer_id, coupon_id, number, currency, region, subtotal_cents, "
-        "discount_cents, total_cents, amount_due_cents) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "discount_cents, total_cents, amount_due_cents) "
+        "SELECT ?, ?, ?, 'INV-' || printf('%05d', COUNT(*) + 1), ?, ?, ?, ?, ?, ? "
+        "FROM invoices WHERE account_id = ?",
         (
-            user["account_id"], customer["id"], coupon_id, f"INV-{count + 1:05d}", customer["currency"],
+            user["account_id"], customer["id"], coupon_id, customer["currency"],
             customer["tax_region"], subtotal, discount, total - discount, total - discount,
+            user["account_id"],
         ),
     ).lastrowid
     db.executemany(

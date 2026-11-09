@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import random
+import threading
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, current_app, jsonify, request
@@ -33,6 +34,13 @@ def start_reset():
         code = str(random.randint(100000, 999999))
         expires_at = datetime.now(timezone.utc) + timedelta(seconds=ttl)
         db = connect()
+        existing = fetch_one(
+            "SELECT expires_at FROM password_resets WHERE user_id = ? AND used_at IS NULL "
+            "ORDER BY id DESC LIMIT 1",
+            (user["id"],),
+        )
+        if existing is not None and datetime.fromisoformat(existing["expires_at"]) > datetime.now(timezone.utc):
+            return jsonify(message="If that email has an account, a reset code is on its way."), 202
         db.execute(
             "UPDATE password_resets SET used_at = CURRENT_TIMESTAMP WHERE user_id = ? AND used_at IS NULL",
             (user["id"],),
@@ -42,12 +50,22 @@ def start_reset():
             (user["id"], _digest(code), expires_at.isoformat()),
         )
         db.commit()
-        send_email(
-            user["email"],
-            "Your password reset code",
-            f"Your code is {code}. It expires in {ttl // 60} minutes.\n\n"
-            "If you did not ask to reset your password, you can ignore this email.",
-        )
+        app = current_app._get_current_object()
+
+        def _deliver(to, subject, text):
+            with app.app_context():
+                send_email(to, subject, text)
+
+        threading.Thread(
+            target=_deliver,
+            args=(
+                user["email"],
+                "Your password reset code",
+                f"Your code is {code}. It expires in {ttl // 60} minutes.\n\n"
+                "If you did not ask to reset your password, you can ignore this email.",
+            ),
+            daemon=True,
+        ).start()
     return jsonify(message="If that email has an account, a reset code is on its way."), 202
 
 
@@ -68,8 +86,14 @@ def confirm_reset():
         return _rejected()
 
     db = connect()
+    claimed = db.execute(
+        "UPDATE password_resets SET attempts = attempts + 1 WHERE id = ? AND attempts < ?",
+        (reset["id"], MAX_ATTEMPTS),
+    )
+    if claimed.rowcount == 0:
+        db.rollback()
+        return _rejected()
     if not hmac.compare_digest(reset["code_hash"], _digest(code)):
-        db.execute("UPDATE password_resets SET attempts = attempts + 1 WHERE id = ?", (reset["id"],))
         db.commit()
         return _rejected()
     db.execute(
