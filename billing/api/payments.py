@@ -63,7 +63,7 @@ def _card_token(body, invoice):
     if not (cvc.isdigit() and len(cvc) in (3, 4)):
         raise validators.ValidationError("card.cvc", "that security code is not valid")
 
-    log.info("charging card %s for invoice %s", number, invoice["number"])
+    log.info("charging card ending %s for invoice %s", number[-4:], invoice["number"])
     token = gateway(
         "/tokens",
         {"card": {"number": number, "exp_month": exp_month, "exp_year": exp_year, "cvc": cvc}},

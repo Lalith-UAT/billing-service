@@ -1,5 +1,6 @@
 import hmac
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlparse
 
 from flask import Blueprint, abort, current_app, g, jsonify, redirect, request, session
 
@@ -46,8 +47,11 @@ def login():
     )
     now = datetime.now(timezone.utc)
     if user and user["locked_until"] and datetime.fromisoformat(user["locked_until"]) > now:
-        return jsonify(error="too many failed attempts, try again later"), 429
-    if not user or user["status"] != "active" or not hmac.compare_digest(user["password_hash"], hash_password(password)):
+        return jsonify(error="wrong email or password"), 401
+    supplied_hash = hash_password(password)
+    stored_hash = user["password_hash"] if user else supplied_hash
+    password_ok = hmac.compare_digest(stored_hash, supplied_hash)
+    if not user or user["status"] != "active" or not password_ok:
         if user:
             _count_failure(db, user, now)
         return jsonify(error="wrong email or password"), 401
@@ -57,7 +61,18 @@ def login():
     session.clear()
     session["user_id"] = user["id"]
     session.permanent = True
-    return redirect(request.args.get("next", "/"))
+    return redirect(_safe_next(request.args.get("next", "/")))
+
+
+def _safe_next(target):
+    if not target or not target.isprintable() or "\\" in target:
+        return "/"
+    if not target.startswith("/") or target.startswith("//"):
+        return "/"
+    parts = urlparse(target)
+    if parts.scheme or parts.netloc:
+        return "/"
+    return target
 
 
 @bp.post("/logout")

@@ -119,7 +119,8 @@ def preview():
     kind = validators.one_of(body.get("kind"), TEMPLATES, "kind")
     footer = validators.text(body, "footer", max_length=500)
     context = _invoice_context(user["account_id"], validators.positive_int(body.get("invoice_id"), "invoice_id"))
-    html = render_template_string(TEMPLATES[kind] + footer, **context)
+    footer_html = render_template_string(FOOTER, footer=footer) if footer else ""
+    html = render_template_string(TEMPLATES[kind], **context) + footer_html
     return jsonify(subject=SUBJECTS[kind].format(number=context["invoice"]["number"]), html=html)
 
 
@@ -133,22 +134,25 @@ def send_reminder(invoice_id):
 
     db = connect()
     yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
-    recent = db.execute(
-        "SELECT 1 FROM notifications WHERE account_id = ? AND invoice_id = ? AND kind = 'invoice_reminder' AND sent_at > ?",
-        (user["account_id"], invoice_id, yesterday),
-    ).fetchone()
-    if recent:
-        return jsonify(error="a reminder already went out in the last day"), 429
-
     subject = SUBJECTS["invoice_reminder"].format(number=invoice["number"])
     footer = _settings(user["account_id"])["footer"]
     html = render_template_string(TEMPLATES["invoice_reminder"] + FOOTER, footer=footer, **context)
     text = f"Invoice {invoice['number']} for {context['amount']} is due on {invoice['due_date']}."
+    claimed = db.execute(
+        "INSERT INTO notifications (account_id, customer_id, invoice_id, kind, subject, delivered) "
+        "SELECT ?, ?, ?, 'invoice_reminder', ?, 0 WHERE NOT EXISTS ("
+        "SELECT 1 FROM notifications WHERE account_id = ? AND invoice_id = ? AND kind = 'invoice_reminder' AND sent_at > ?)",
+        (user["account_id"], invoice["customer_id"], invoice_id, subject, user["account_id"], invoice_id, yesterday),
+    )
+    db.commit()
+    if claimed.rowcount == 0:
+        return jsonify(error="a reminder already went out in the last day"), 429
+
     delivered = send_email(context["customer"]["email"], subject, text, html=html)
     db.execute(
-        "INSERT INTO notifications (account_id, customer_id, invoice_id, kind, subject, delivered) "
-        "VALUES (?, ?, ?, 'invoice_reminder', ?, ?)",
-        (user["account_id"], invoice["customer_id"], invoice_id, subject, int(delivered)),
+        "UPDATE notifications SET delivered = ? WHERE account_id = ? AND invoice_id = ? "
+        "AND kind = 'invoice_reminder' AND sent_at > ?",
+        (int(delivered), user["account_id"], invoice_id, yesterday),
     )
     db.commit()
     return jsonify(delivered=delivered), 202

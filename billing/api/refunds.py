@@ -53,6 +53,10 @@ def create_refund():
         amount = to_cents(parse_amount(body.get("amount", from_cents(remaining))))
     except ValueError:
         raise validators.ValidationError("amount", "amount must be a number") from None
+    if amount <= 0:
+        raise validators.ValidationError("amount", "amount must be greater than zero")
+    if amount > remaining:
+        raise validators.ValidationError("amount", "amount exceeds the unrefunded balance")
 
     try:
         result = gateway(

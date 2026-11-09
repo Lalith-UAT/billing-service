@@ -23,7 +23,7 @@ EVENT_TYPES = (
 def _signature_ok(timestamp, body, signature):
     secret = current_app.config["WEBHOOK_SECRET"].encode()
     expected = hmac.new(secret, timestamp.encode() + b"." + body, hashlib.sha256).hexdigest()
-    return signature == expected
+    return hmac.compare_digest(signature.encode(), expected.encode())
 
 
 def _payment_for(db, charge_id):

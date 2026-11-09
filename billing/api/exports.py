@@ -4,7 +4,7 @@ import secrets
 import subprocess
 from datetime import datetime, timezone
 
-from flask import Blueprint, current_app, jsonify, request, send_file
+from flask import Blueprint, abort, current_app, jsonify, request, send_file
 
 from .. import validators
 from ..auth import require_user
@@ -85,5 +85,8 @@ def list_exports():
 @bp.get("/download")
 def download_export():
     user = require_user()
-    path = os.path.join(_account_folder(user["account_id"]), request.args.get("file", ""))
+    folder = os.path.realpath(_account_folder(user["account_id"]))
+    path = os.path.realpath(os.path.join(folder, request.args.get("file", "")))
+    if os.path.commonpath([path, folder]) != folder or not os.path.isfile(path):
+        abort(404)
     return send_file(path, as_attachment=True)

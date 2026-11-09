@@ -7,8 +7,11 @@ from flask import Blueprint, abort, current_app, render_template_string, request
 from ..auth import require_user
 from ..db import fetch_all, fetch_one
 from ..money import format_money
+from ..validators import one_of
 
 bp = Blueprint("receipts", __name__, url_prefix="/receipts")
+
+PAGE_SIZES = ("A3", "A4", "A5", "Legal", "Letter", "Tabloid")
 
 RECEIPT_HTML = """<!doctype html>
 <html>
@@ -67,12 +70,15 @@ def receipt_pdf(payment_id):
     name = f"receipt-{payment_id}.pdf"
     if not os.path.exists(os.path.join(folder, name)):
         os.makedirs(folder, exist_ok=True)
-        page_size = request.args.get("size", "Letter")
+        page_size = one_of(request.args.get("size", "Letter"), PAGE_SIZES, "size")
         with tempfile.NamedTemporaryFile("w", suffix=".html", delete=False, encoding="utf-8") as html:
             html.write(render_template_string(RECEIPT_HTML, **context))
         try:
-            command = f"wkhtmltopdf --quiet --page-size {page_size} {html.name} {os.path.join(folder, name)}"
-            subprocess.run(command, shell=True, check=True, timeout=60)
+            subprocess.run(
+                ["wkhtmltopdf", "--quiet", "--page-size", page_size, html.name, os.path.join(folder, name)],
+                check=True,
+                timeout=60,
+            )
         finally:
             os.unlink(html.name)
     return send_from_directory(folder, name, as_attachment=True)
